@@ -1,5 +1,17 @@
+# default .gitignore
 .Rproj.user
 .Rhistory
 .RData
 .Ruserdata
 data
+.Rdata
+.httr-oauth
+.DS_Store
+.quarto
+
+# specific to this repo
+src/data
+src/dump
+src/pitch/imgs/gif
+src/pitch/pitch_files
+src/pitch/pitch.html
