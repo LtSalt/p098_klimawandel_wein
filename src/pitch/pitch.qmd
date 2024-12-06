@@ -1,7 +1,7 @@
 ---
 title: "Wo in Zukunft Wein wachsen könnte"
 format: 
-  revealjs:
+  pptx:
     incremental: true
     css: styles.css
 editor: source
@@ -206,8 +206,7 @@ compare %>%
 compare %>%  
   select(-suitable) %>% 
   pivot_longer(SUIT_E:SUIT_L, names_to = "type", values_to = "suitable") %>% 
-  mutate(type = fct_relevel(as.factor(str_sub(type, 6, 7)),
-                            "E", "EM", "M", "ML", "L")) %>% 
+  mutate(type = str_sub(type, 6, 7)) %>% 
   ggplot() +
   geom_sf(aes(fill = suitable, color = suitable)) +
   geom_sf(data = states, fill = NA, color = "#292A50") +
@@ -232,7 +231,9 @@ compare %>%
   mutate(region = case_when(`2099` > `2024` ~ "Kommt dazu",
                             `2099` & `2024` ~ "Hält sich",
                             `2099` < `2024` ~ "Geht verloren",
-                            !(`2099` | `2024`) ~  NA_character_)) %>% 
+                            !(`2099` | `2024`) ~  NA_character_),
+         type = fct_relevel(str_sub(type, 6, 7),
+                            "E", "EM", "M", "ML", "L")) %>% 
   ggplot() +
   geom_sf(aes(fill = region, color = region), show.legend = TRUE) +
   facet_grid(cols = vars(type)) +
@@ -261,7 +262,9 @@ sims %>%
   mutate(region = case_when(`2099` > `2024` ~ "Kommt dazu",
                             `2099` & `2024` ~ "Hält sich",
                             `2099` < `2024` ~ "Geht verloren",
-                            !(`2099` | `2024`) ~  NA_character_)) %>% 
+                            !(`2099` | `2024`) ~  NA_character_),
+          type = fct_relevel(str_sub(type, 6, 7),
+                            "E", "EM", "M", "ML", "L")) %>% 
   ggplot() +
   geom_sf(aes(fill = region, color = region)) +
   facet_grid(cols = vars(type)) +
@@ -304,10 +307,14 @@ compare %>%
         legend.key.spacing.x = unit(0, "cm"),
         plot.caption = element_text(hjust = 0))
 ```
+
+## Weinanbau in Deutschland
+
 ```{r}
 scenarios_agg %>% 
   get_slices(c("rcp45"), c(2024, 2099)) %>% 
   compute_scores() %>% 
+  filter(!is.na(score)) %>% # 38 features (19 Landkreise * 2 times, 5 %) could not be aggregated
   ggplot() +
   geom_sf(aes(fill = score, color = score)) +
   geom_sf(data = states, fill = NA, color = "black") +
@@ -378,7 +385,6 @@ sims %>%
 - Anbau traditioneller (früher) Sorten im Südwesten möglicherweise gefährdet
 - bei starkem Klimawandel leiden traditionelle Anbaugebiete besonders
 - relativ feinkörnige Daten für Recherche & visuelle Aufbereitung
-- ...ein paar offene Fragen
 
 
 ## Offene Fragen

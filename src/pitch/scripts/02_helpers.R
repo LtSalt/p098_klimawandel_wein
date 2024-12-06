@@ -95,8 +95,6 @@ theme_binary <- function() {
     labs(fill = NULL, color = NULL),
     scale_fill_manual(values = c("#4C4F8B", "#53914D"), labels = c("geeignet", "ungeeignet")),
     scale_color_manual(values = c("#4C4F8B", "#53914D"), labels = c("geeignet", "ungeeignet")),
-    # # scale_fill_manual(values = c("grey", "#53914D"), labels = c("geeignet", "ungeeignet")),
-    # scale_color_manual(values = c("grey", "#53914D"), labels = c("geeignet", "ungeeignet")),
     theme_light() +
     theme(panel.grid = element_blank(),
           axis.text = element_blank(),
