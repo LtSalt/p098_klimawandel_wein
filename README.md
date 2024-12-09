@@ -12,7 +12,7 @@ All data was added to the `.gitignore` and uploaded to OneDrive. Please recreate
   - imgs
     - **gif**
     
-...and copy all folders from the [OneDrive data directory](https://suedwestrundfunk.sharepoint.com/:p:/r/sites/SWRDATA/Freigegebene%20Dokumente/p098_klimawandel_wein/docs/pitch.pptx?d=wf6c0c991a2414c4fb8b202a09ab3816a&csf=1&web=1&e=TifvUh) to `src/data/raw`.
+...and copy all folders from the [OneDrive data directory](https://suedwestrundfunk.sharepoint.com/:f:/r/sites/SWRDATA/Freigegebene%20Dokumente/p098_klimawandel_wein/data?csf=1&web=1&e=TBMJ5B) to `src/data/raw`.
 
 Also, you need to run all scripts in `src/pitch/scripts` to replicate `pitch.qmd`.
 
