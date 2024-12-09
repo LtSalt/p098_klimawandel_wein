@@ -28,8 +28,8 @@ source(here("src/pitch/scripts/02_helpers.R")) # small helpers for wrangling and
 ```{r scenarios}
 #| include: false
 
-rcp45 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp45.nc"))
-rcp85 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp85.nc"))
+rcp45 <- read_stars(here("src/data/raw/suitability/suitability_rcp45.nc"))
+rcp85 <- read_stars(here("src/data/raw/suitability/suitability_rcp85.nc"))
 
 # combine NETCDF data for both scenarios & add dimension "scenario"
 sims <- c("rcp45" = rcp45, "rcp85" = rcp85, along = "scenario")

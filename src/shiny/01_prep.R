@@ -20,8 +20,8 @@ source(here("src/pitch/scripts/02_helpers.R"))
 
 # Scenarios ---------------------------------------------------------------
 
-rcp45 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp45.nc"))
-rcp85 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp85.nc"))
+rcp45 <- read_stars(here("src/data/raw/suitability/suitability_rcp45.nc"))
+rcp85 <- read_stars(here("src/data/raw/suitability/suitability_rcp85.nc"))
 
 sims <- c("rcp45" = rcp45, "rcp85" = rcp85, along = "scenario")
 

@@ -16,7 +16,7 @@ sf_use_s2(FALSE)
 
 # Import ------------------------------------------------------------------
 
-rcp45 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp45.nc"))
+rcp45 <- read_stars(here("src/data/raw/suitability/suitability_rcp45.nc"))
 
 countries <- read_sf(here("src/data/raw/CNTR_RG_10M_2024_4326.shp/CNTR_RG_10M_2024_4326.shp")) %>% 
   st_crop(st_bbox(rcp45)) %>% 
