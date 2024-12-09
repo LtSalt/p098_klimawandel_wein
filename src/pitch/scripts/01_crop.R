@@ -8,7 +8,7 @@
 # Dependencies ------------------------------------------------------------
 
 if (!"pacman" %in% installed.packages()) install.packages("pacman")
-pacman::p_load(here, tidyverse, sf, stars, lubridate)
+pacman::p_load(here, tidyverse, sf, stars, lubridate, cubelyr)
 
 # spherical geometries will fail (presumably because of error in raw geometries)
 sf_use_s2(FALSE)
