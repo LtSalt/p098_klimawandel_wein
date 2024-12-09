@@ -6,7 +6,7 @@ format:
     css: styles.css
 editor: source
 editor_options: 
-  chunk_output_type: inline
+  chunk_output_type: console
 ---
 
 ```{r depencencies}
@@ -21,7 +21,8 @@ pacman::p_load(here,
                magick,
                RColorBrewer)
 
-source(here("src/pitch/scripts/02_helpers.R"))
+source(here("src/pitch/scripts/01_crop.R")) # precalculates cropped grid cells, matching the outline of europe/germany
+source(here("src/pitch/scripts/02_helpers.R")) # small helpers for wrangling and plotting
 ```
 
 ```{r scenarios}
@@ -30,18 +31,26 @@ source(here("src/pitch/scripts/02_helpers.R"))
 rcp45 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp45.nc"))
 rcp85 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp85.nc"))
 
+# combine NETCDF data for both scenarios & add dimension "scenario"
 sims <- c("rcp45" = rcp45, "rcp85" = rcp85, along = "scenario")
 ```
 
 ```{r geographies}
 #| include: false
 
-# will not work with `sf_use_s2(TRUE)`
+# `sf` uses either spherical or planar geometries for geographical calculations
+# spherical is more precise, but takes longer and will fail in some cases (as here, 
+# presumably because of slight errors in the raw `countries` polygons)
+# -> switch to planar geometries
 sf_use_s2(FALSE)
+
 countries <- read_sf(here("src/data/raw/CNTR_RG_10M_2024_4326.shp/CNTR_RG_10M_2024_4326.shp")) %>% 
-  st_crop(st_bbox(rcp45)) %>% 
+  st_crop(st_bbox(rcp45)) %>%
   select(geometry) %>% 
   st_make_valid()
+
+# switch back to spherical geometries
+sf_use_s2(TRUE)
 
 germany <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_STA.shp")) %>% 
   slice(1) %>% 
@@ -53,17 +62,11 @@ states <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_LAN.sh
 
 krs <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_KRS.shp")) %>% 
   st_transform(4326)
-
-sf_use_s2(TRUE)
-gem <- read_sf(here("src/data/raw/vg5000_12-31.gk3.shape.ebenen/vg5000_ebenen_1231/VG5000_GEM.shp")) %>% 
-  filter(GF == 9) %>% 
-  select(name = GEN,
-         geometry) %>% 
-  st_transform(4326) %>% 
-  mutate(centroid = st_centroid(geometry))
 ```
 
 ```{r scenariosAggregated}
+# aggregate mean values over `Landkreise`
+
 rcp45_agg <- sims %>%
   filter(scenario == "rcp45") %>% 
   aggregate(krs, mean, na.rm = TRUE)
@@ -72,9 +75,16 @@ rcp85_agg <- sims %>%
   filter(scenario == "rcp85") %>% 
   aggregate(krs, mean, na.rm = TRUE)
 
+# combine aggregated values in one NETCDF object
 scenarios_agg <- c("rcp45" = rcp45_agg, "rcp85" = rcp85_agg, along = "scenario")
 ```
 
+```{r miscelleaneous}
+
+# suitabitlity index ranges from 0 to 1. 
+# all values equal to or greater than 0.65 are considered suitable (see paper)
+cutoff <- 0.65
+```
 
 ## Inspiration
 
@@ -102,21 +112,43 @@ scenarios_agg <- c("rcp45" = rcp45_agg, "rcp85" = rcp85_agg, along = "scenario")
 ## Wein in Europa heute...
 
 ```{r europe2024}
+# `get_slice` and it's sibling `get_slices`
+#   1. filter for scenario and/or year
+#   2. convert raster to vector data
+
+# `crop_to` grabs the pre-computed cropped cells, either for Europe or Germany
+# (instead of recalculating the geographies each time)
+
+# `compute_scores` simplifies complexity by
+#   1. checking if suitability is equal to or greater than the cutoff value
+#   2. creating an overall score between 0 (climate is not suitable for any variation)
+#      and 5 (climate is suitable for all variations)
+#   3. creating a binary variable `suitable`, where a data point is deemed suitable if 
+#      the score is bigger than 0 (where at least one variation finds suitable conditions)
+
+# `theme_binary` will apply colors and styles for binary plots (suitable vs non-suitable)
+
 sims %>%
-  get_slice("rcp45", 2024) %>%
-  crop_to("europe") %>%
-  compute_scores() %>%
+  get_slice("rcp45", 2024) %>% 
+  crop_to("europe") %>% 
+  compute_scores() %>% 
   ggplot() +
-  geom_sf(aes(fill = suitable, color = suitable)) +
+  # make grid lines disappear by matching color with fill values
+  # (normally, you could also set `color = NA` or `lwd = 0`, but this does not work reliably in `geom_sf`)
+  geom_sf(aes(fill = suitable, color = suitable)) + 
   geom_sf(data = countries, fill = NA, color = "#292A50", lwd = 0.1) +
-  theme_binary() +
-  labs(title = "2024")
+  labs(title = "2024",
+       fill = NULL, 
+       color = NULL) +
+  theme_binary()
 ```
 
 
 ## ...und morgen
 
 ```{r europe2024to2099}
+# if not yet existing, creates a series of plots and saves them to disk
+
 years <- seq(2024, 2099, 1)
 dest <- here("src/pitch/imgs/gif/")
 pngs <- list.files(dest, full.names = TRUE)
@@ -130,6 +162,9 @@ imgs <- reduce(pngs,
        \(acc, curr) c(acc, image_read(curr)),
        .init = image_read(pngs[[1]]))
 
+
+# renders plots on disk as GIF
+# do not run in interactive session
 
 image_animate(imgs, fps = 5, loop = 1)
 ```
@@ -206,12 +241,13 @@ compare %>%
 compare %>%  
   select(-suitable) %>% 
   pivot_longer(SUIT_E:SUIT_L, names_to = "type", values_to = "suitable") %>% 
-  mutate(type = str_sub(type, 6, 7)) %>% 
+  mutate(type = fct_relevel(str_sub(type, 6, 7),
+                            "E", "EM", "M", "ML", "L")) %>% 
   ggplot() +
   geom_sf(aes(fill = suitable, color = suitable)) +
   geom_sf(data = states, fill = NA, color = "#292A50") +
   facet_grid(cols = vars(type),
-             rows = vars(year),
+             rows = vars(year), 
              switch = "y") +
   theme_binary() +
   labs(caption = "bei +2.6°C bis Ende des Jahrhunderts") +
@@ -221,8 +257,18 @@ compare %>%
 
 ## Weinanbau in Deutschland
 
-```{r}
+```{r lossesRCP45}
+# use an explicit color mapping (else, ggplot might use different colors depending on which values are present in the data)
+
 custom_palette <- c("Geht verloren" = "#F8766D", "Hält sich" = "#00BA38", "Kommt dazu" = "#619CFF")
+
+# Math with booleans! 
+# TRUE == 1, FALSE == 0
+# -> for each variation, check if binary suitability changes over time
+# (e.g., suitable in 2024, not suitable in 2099:
+#    TRUE, FALSE
+#    1, 0
+#    1 > 0: geht verloren)
 
 compare %>% 
   select(year, SUIT_E:SUIT_L, geometry) %>% 
@@ -251,7 +297,7 @@ compare %>%
 
 ## Weinanbau in Deutschland
 
-```{r}
+```{r lossesRCP85}
 sims %>% 
   get_slices("rcp85", c(2024, 2099)) %>% 
   crop_to("germany") %>% 
@@ -314,7 +360,7 @@ compare %>%
 scenarios_agg %>% 
   get_slices(c("rcp45"), c(2024, 2099)) %>% 
   compute_scores() %>% 
-  filter(!is.na(score)) %>% # 38 features (19 Landkreise * 2 times, 5 %) could not be aggregated
+  filter(!is.na(score)) %>% # 38 features (19 Landkreise * 2 times, 5 %) could not be aggregated (presumably too small?)
   ggplot() +
   geom_sf(aes(fill = score, color = score)) +
   geom_sf(data = states, fill = NA, color = "black") +
@@ -365,7 +411,7 @@ sims %>%
                             lookup_type)) %>%
   ggplot() +
   geom_line(aes(x = year(TIME), y = suitability, color = type)) +
-  geom_hline(yintercept = 0.65, linetype = 2) +
+  geom_hline(yintercept = cutoff, linetype = 2) +
   theme_light() +
   scale_color_manual(values = brewer.pal(5, "Greens")) +
   coord_cartesian(expand = FALSE, xlim = c(1980, 2100), ylim = c(0, 1)) +

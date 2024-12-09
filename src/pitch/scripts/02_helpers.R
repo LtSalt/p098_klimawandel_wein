@@ -1,5 +1,7 @@
 ################################################################################
 # HELPERS
+# 
+# Wrangling and plotting helpers for pitch
 ################################################################################
 
 
@@ -57,9 +59,13 @@ crop_to <- function(sf, region) {
 
 # Compute suitability scores ----------------------------------------------
 
+# suitabitlity index ranges from 0 to 1. 
+# all values equal to or greater than 0.65 are considered suitable (see paper)
+cutoff <- 0.65
+
 compute_scores <- function(sf) {
   sf %>% 
-    mutate(across(SUIT_E:SUIT_L, \(value) value >= 0.65),
+    mutate(across(SUIT_E:SUIT_L, \(value) value >= cutoff),
            score = SUIT_E + SUIT_EM + SUIT_M + SUIT_ML + SUIT_L,
            suitable = score > 0,
            score = as.factor(score))
