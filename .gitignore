@@ -10,6 +10,12 @@ data
 .quarto
 
 # specific to this repo
-src/data
+
+!src/data/.gitkeep
+src/data/raw/*
+!src/data/raw/.gitkeep
+src/data/processed/*
+!src/data/processed/.gitkeep
 src/dump
-src/pitch/imgs/gif
+src/pitch/imgs/gif/*
+!src/pitch/imgs/gif/.gitkeep
