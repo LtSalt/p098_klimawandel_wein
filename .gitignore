@@ -3,7 +3,6 @@
 .Rhistory
 .RData
 .Ruserdata
-data
 .Rdata
 .httr-oauth
 .DS_Store
@@ -11,7 +10,6 @@ data
 
 # specific to this repo
 
-!src/data/.gitkeep
 src/data/raw/*
 !src/data/raw/.gitkeep
 src/data/processed/*

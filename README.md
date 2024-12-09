@@ -2,19 +2,7 @@
 
 ## Before you start
 
-All data was added to the `.gitignore` and uploaded to OneDrive. Please recreate the following folders (new folders in bold markup):
-
-- src
-  - **data**
-    - **raw**
-    - **processed**
-- pitch
-  - imgs
-    - **gif**
-    
-...and copy all folders from the [OneDrive data directory](https://suedwestrundfunk.sharepoint.com/:f:/r/sites/SWRDATA/Freigegebene%20Dokumente/p098_klimawandel_wein/data?csf=1&web=1&e=TBMJ5B) to `src/data/raw`.
-
-Also, you need to run all scripts in `src/pitch/scripts` to replicate `pitch.qmd`.
+All data was added to the `.gitignore` and uploaded to OneDrive. Copy all folders from the [OneDrive data directory](https://suedwestrundfunk.sharepoint.com/:f:/r/sites/SWRDATA/Freigegebene%20Dokumente/p098_klimawandel_wein/data?csf=1&web=1&e=TBMJ5B) to `src/data/raw`.
 
 
 ## Working with NETCDF files
