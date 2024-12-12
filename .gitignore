@@ -15,5 +15,4 @@ src/data/raw/*
 src/data/processed/*
 !src/data/processed/.gitkeep
 src/dump
-src/pitch/imgs/gif/*
-!src/pitch/imgs/gif/.gitkeep
+src/analysis/01_pitch/imgs/gif/*

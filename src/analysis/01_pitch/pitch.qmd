@@ -1,0 +1,482 @@
+---
+title: "Wo in Zukunft Wein wachsen könnte"
+format: 
+  pptx:
+    incremental: true
+    css: styles.css
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r depencencies}
+#| include: false
+
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
+pacman::p_load(here, 
+               tidyverse, 
+               stars, 
+               lubridate, 
+               sf, 
+               magick,
+               RColorBrewer)
+
+source(here("src/analysis/01_pitch/scripts/02_helpers.R")) # small helpers for wrangling and plotting
+```
+
+```{r scenarios}
+#| include: false
+
+rcp45 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp45.nc"))
+rcp85 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp85.nc"))
+
+# combine NETCDF data for both scenarios & add dimension "scenario"
+sims <- c("rcp45" = rcp45, "rcp85" = rcp85, along = "scenario")
+```
+
+```{r geographies}
+#| include: false
+
+# `sf` uses either spherical or planar geometries for geographical calculations
+# spherical is more precise, but takes longer and will fail in some cases (as here, 
+# presumably because of slight errors in the raw `countries` polygons)
+# -> switch to planar geometries
+sf_use_s2(FALSE)
+
+countries <- read_sf(here("src/data/raw/CNTR_RG_10M_2024_4326.shp/CNTR_RG_10M_2024_4326.shp")) %>% 
+  st_crop(st_bbox(rcp45)) %>%
+  select(geometry) %>% 
+  st_make_valid()
+
+# switch back to spherical geometries
+sf_use_s2(TRUE)
+
+germany <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_STA.shp")) %>% 
+  slice(1) %>% 
+  st_transform(4326)
+
+states <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_LAN.shp")) %>%
+  filter(GF == 9) %>% 
+  st_transform(4326)
+
+krs <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_KRS.shp")) %>% 
+  st_transform(4326)
+```
+
+```{r scenariosAggregated}
+# aggregate mean values over `Landkreise`
+
+rcp45_agg <- sims %>%
+  filter(scenario == "rcp45") %>% 
+  aggregate(krs, mean, na.rm = TRUE)
+
+rcp85_agg <- sims %>%
+  filter(scenario == "rcp85") %>% 
+  aggregate(krs, mean, na.rm = TRUE)
+
+# combine aggregated values in one NETCDF object
+scenarios_agg <- c("rcp45" = rcp45_agg, "rcp85" = rcp85_agg, along = "scenario")
+```
+
+```{r miscelleaneous}
+
+# suitabitlity index ranges from 0 to 1. 
+# all values equal to or greater than 0.65 are considered suitable (see paper)
+threshold <- 0.65
+```
+
+## Inspiration
+
+![](imgs/zon1.png){fig-align="center"}
+
+
+## Inspiration
+
+![](imgs/zon2.png){fig-align="center"}
+
+
+## Inspiration
+
+![](imgs/zon3.png){fig-align="center"}
+
+
+## Können wir das auch?
+
+
+## Können wir das auch?
+
+![](imgs/sgubin.png){fig-align="center"}
+
+
+## Wein in Europa heute...
+
+```{r europe2024}
+# `get_slice` and it's sibling `get_slices`
+#   1. filter for scenario and/or year
+#   2. convert raster to vector data
+
+# `crop_to` grabs the pre-computed cropped cells, either for Europe or Germany
+# (instead of recalculating the geographies each time)
+
+# `compute_scores` simplifies complexity by
+#   1. checking if suitability is equal to or greater than the threshold value
+#   2. creating an overall score between 0 (climate is not suitable for any variation)
+#      and 5 (climate is suitable for all variations)
+#   3. creating a binary variable `suitable`, where a data point is deemed suitable if 
+#      the score is bigger than 0 (where at least one variation finds suitable conditions)
+
+# `theme_binary` will apply colors and styles for binary plots (suitable vs non-suitable)
+
+sims %>%
+  get_slice("rcp45", 2024) %>% 
+  crop_to("europe") %>% 
+  compute_scores() %>% 
+  ggplot() +
+  # make grid lines disappear by matching color with fill values
+  # (normally, you could also set `color = NA` or `lwd = 0`, but this does not work reliably in `geom_sf`)
+  geom_sf(aes(fill = suitable, color = suitable)) + 
+  geom_sf(data = countries, fill = NA, color = "#292A50", lwd = 0.1) +
+  labs(title = "2024",
+       fill = NULL, 
+       color = NULL) +
+  theme_binary()
+```
+
+
+## ...und morgen
+
+```{r europe2024to2099}
+# if not yet existing, creates a series of plots and saves them to disk
+
+years <- seq(2024, 2099, 1)
+dest <- here("src/analysis/01_pitch/imgs/gif")
+pngs <- list.files(dest, full.names = TRUE)
+
+if (!dir.exists(dest)) {
+  dir.create(dest, recursive = TRUE)
+  
+  save_pngs(years, dest)
+  pngs <- list.files(dest, full.names = TRUE)
+}
+
+imgs <- reduce(pngs, 
+       \(acc, curr) c(acc, image_read(curr)),
+       .init = image_read(pngs[[1]]))
+
+
+# renders plots on disk as GIF
+# DO NOT run in interactive session
+
+image_animate(imgs, fps = 5, loop = 1)
+```
+
+
+## ...und morgen
+
+```{r europeComparison}
+facetted <- sims %>%
+  get_slices(scen = c("rcp45", "rcp85"),
+             years = c(2024, 2099)) %>%
+  crop_to("europe") %>%
+  compute_scores()
+
+facetted %>% 
+  filter(scenario == "rcp45") %>% 
+  ggplot() +
+  geom_sf(aes(fill = suitable, color = suitable)) +
+  geom_sf(data = countries, fill = NA, color = "#292A50", lwd = 0.1) +
+  facet_wrap(~ year) +
+  theme_binary()
+```
+
+
+## ...und morgen
+
+```{r europeByScenario}
+facetted %>% 
+  ggplot() +
+  geom_sf(aes(fill = suitable, color = suitable)) +
+  geom_sf(data = countries, fill = NA, color = "#292A50", lwd = 0.1) +
+  facet_grid(rows = vars(scenario),
+             cols = vars(year)) +
+  theme_binary()
+```
+
+
+## Weinanbau in Deutschland
+
+```{r germanyEarly}
+compare <- sims %>% 
+  get_slices("rcp45", c(2024, 2099)) %>% 
+  crop_to("germany") %>% 
+  compute_scores()
+  
+compare %>% 
+  ggplot() +
+  geom_sf(aes(fill = SUIT_E, color = SUIT_E)) +
+  geom_sf(data = states, fill = NA, color = "#292A50") +
+  theme_binary() +
+  facet_wrap(~ year) +
+  labs(caption = "frühe Weine bei +2.6°C bis Ende des Jahrhunderts") +
+  theme(plot.caption = element_text(hjust = 0))
+```
+
+
+## Weinanbau in Deutschland
+
+```{r germanyLate}
+compare %>%  
+  ggplot() +
+  geom_sf(aes(fill = SUIT_L, color = SUIT_L)) +
+  geom_sf(data = states, fill = NA, color = "#292A50") +
+  theme_binary() +
+  facet_wrap(~ year) +
+  labs(caption = "späte Weine bei +2.6°C bis Ende des Jahrhunderts") +
+  theme(plot.caption = element_text(hjust = 0))
+```
+
+
+## Weinanbau in Deutschland
+
+```{r germanyAllTypes}
+compare %>%  
+  select(-suitable) %>% 
+  pivot_longer(SUIT_E:SUIT_L, names_to = "type", values_to = "suitable") %>% 
+  mutate(type = fct_relevel(str_sub(type, 6, 7),
+                            "E", "EM", "M", "ML", "L")) %>% 
+  ggplot() +
+  geom_sf(aes(fill = suitable, color = suitable)) +
+  geom_sf(data = states, fill = NA, color = "#292A50") +
+  facet_grid(cols = vars(type),
+             rows = vars(year), 
+             switch = "y") +
+  theme_binary() +
+  labs(caption = "bei +2.6°C bis Ende des Jahrhunderts") +
+  theme(plot.caption = element_text(hjust = 0))
+```
+
+
+## Weinanbau in Deutschland
+
+```{r lossesRCP45}
+# use an explicit color mapping (else, ggplot might use different colors depending on which values are present in the data)
+
+custom_palette <- c("Geht verloren" = "#F8766D", "Hält sich" = "#00BA38", "Kommt dazu" = "#619CFF")
+
+# Math with booleans! 
+# TRUE == 1, FALSE == 0
+# -> for each variation, check if binary suitability changes over time
+# (e.g., suitable in 2024, not suitable in 2099:
+#    TRUE, FALSE
+#    1, 0
+#    1 > 0: geht verloren)
+
+compare %>% 
+  select(year, SUIT_E:SUIT_L, geometry) %>% 
+  pivot_longer(SUIT_E:SUIT_L, names_to = "type", values_to = "suitability") %>% 
+  pivot_wider(names_from = year, values_from = suitability) %>% 
+  mutate(region = case_when(`2099` > `2024` ~ "Kommt dazu",
+                            `2099` & `2024` ~ "Hält sich",
+                            `2099` < `2024` ~ "Geht verloren",
+                            !(`2099` | `2024`) ~  NA_character_),
+         type = fct_relevel(str_sub(type, 6, 7),
+                            "E", "EM", "M", "ML", "L")) %>% 
+  ggplot() +
+  geom_sf(aes(fill = region, color = region), show.legend = TRUE) +
+  facet_grid(cols = vars(type)) +
+  scale_fill_manual(values = custom_palette) +
+  scale_color_manual(values = custom_palette) +
+  labs(caption = "Flächengewinne und -verluste bei bei +2.6°C bis Ende des Jahrhunderts") +
+  theme_light() +
+  theme(panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        plot.caption = element_text(hjust = 0))
+```
+
+## Weinanbau in Deutschland
+
+```{r lossesRCP85}
+sims %>% 
+  get_slices("rcp85", c(2024, 2099)) %>% 
+  crop_to("germany") %>% 
+  compute_scores() %>% 
+  select(year, SUIT_E:SUIT_L, geometry) %>% 
+  pivot_longer(SUIT_E:SUIT_L, names_to = "type", values_to = "suitability") %>% 
+  pivot_wider(names_from = year, values_from = suitability) %>% 
+  mutate(region = case_when(`2099` > `2024` ~ "Kommt dazu",
+                            `2099` & `2024` ~ "Hält sich",
+                            `2099` < `2024` ~ "Geht verloren",
+                            !(`2099` | `2024`) ~  NA_character_),
+          type = fct_relevel(str_sub(type, 6, 7),
+                            "E", "EM", "M", "ML", "L")) %>% 
+  ggplot() +
+  geom_sf(aes(fill = region, color = region)) +
+  facet_grid(cols = vars(type)) +
+  scale_fill_manual(values = custom_palette) +
+  scale_color_manual(values = custom_palette) +
+  labs(caption = "Flächengewinne und -verluste bei bei +4°C bis Ende des Jahrhunderts") +
+  theme_light() +
+  theme(panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "bottom",
+        plot.caption = element_text(hjust = 0))
+```
+
+## Weinanbau in Deutschland
+
+```{r germanyVariability}
+compare %>% 
+  mutate(score = as.factor(score)) %>% 
+  ggplot() +
+  geom_sf(aes(fill = score, color = score)) +
+  geom_sf(data = states, fill = NA, color = "black") +
+  facet_wrap(~year) +
+  theme_light() +
+  scale_fill_brewer(palette = "Greens") +
+  scale_color_brewer(palette ="Greens") +
+  guides(fill = guide_legend(nrow = 1),
+         color = guide_legend(nrow = 1)) +
+  labs(fill = "Variabilität",
+       color = "Variabilität",
+       caption = "bei +2.6°C bis Ende des Jahrhunderts") +
+  theme(panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = "top",
+        legend.text.position = "bottom",
+        legend.title.position = "top",
+        legend.title = element_text(hjust = 0.5),
+        legend.key.spacing.x = unit(0, "cm"),
+        plot.caption = element_text(hjust = 0))
+```
+
+## Weinanbau in Deutschland
+
+```{r}
+scenarios_agg %>% 
+  get_slices(c("rcp45"), c(2024, 2099)) %>% 
+  compute_scores() %>% 
+  filter(!is.na(score)) %>% # 38 features (19 Landkreise * 2 times, 5 %) could not be aggregated (presumably too small?)
+  ggplot() +
+  geom_sf(aes(fill = score, color = score)) +
+  geom_sf(data = states, fill = NA, color = "black") +
+  geom_sf(data = krs, fill = NA, lwd = 0.1) +
+  facet_wrap(~year) +
+  theme_light() +
+  scale_fill_brewer(palette = "Greens") +
+  scale_color_brewer(palette ="Greens") +
+  guides(fill = guide_legend(nrow = 1),
+         color = guide_legend(nrow = 1)) +
+  labs(fill = "Variabilität",
+       color = "Variabilität",
+       caption = "bei +2.6°C bis Ende des Jahrhunderts, aggregiert nach Landkreisen") +
+  theme(panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = "top",
+        legend.text.position = "bottom",
+        legend.title.position = "top",
+        legend.title = element_text(hjust = 0.5),
+        legend.key.spacing.x = unit(0, "cm"),
+        plot.caption = element_text(hjust = 0))
+```
+
+
+## Weinanbau in Deutschland
+
+```{r berlinTimeline}
+berlin <- tibble(lon = 13.4050, lat = 52.5200) %>% 
+  st_as_sf(coords = c("lon", "lat"), crs = 4326) %>% 
+  rename(centroid = geometry)
+
+lookup_type <- c(
+  "SUIT_E$" = "Sehr früh",
+  "SUIT_EM$" = "Früh",
+  "SUIT_M$" = "Mittel",
+  "SUIT_ML$" = "Spät",
+  "SUIT_L$" = "Sehr spät"
+)
+
+sims %>%
+  filter(scenario == "rcp45") %>%
+  st_extract(berlin) %>%
+  st_as_sf(long = TRUE) %>%
+  pivot_longer(SUIT_E:SUIT_L, names_to = "type", values_to = "suitability") %>%
+  mutate(type = str_replace_all(type, lookup_type),
+         type = fct_relevel(as.factor(type),
+                            lookup_type)) %>%
+  ggplot() +
+  geom_line(aes(x = year(TIME), y = suitability, color = type)) +
+  geom_hline(yintercept = threshold, linetype = 2) +
+  theme_light() +
+  scale_color_manual(values = brewer.pal(5, "Greens")) +
+  coord_cartesian(expand = FALSE, xlim = c(1980, 2100), ylim = c(0, 1)) +
+  labs(x = NULL,
+       y = "Suitability",
+       fill = "Weintyp",
+       color = "Weintyp",
+       caption = "Zentrum von Berlin, bei einer weltweiten Erwärmung von +2.6°C bis Ende des Jahrhunderts") +
+  theme(plot.caption = element_text(hjust = 0))
+```
+
+
+## Fazit
+
+- Weinanbau in Zukunft auch in nördlichen Breitengraden möglich 
+- Deutschland profitiert hier vermutlich vom Klimawandel (vor allem in Nord- und Ostdeutschland)
+- Anbau traditioneller (früher) Sorten im Südwesten möglicherweise gefährdet
+- bei starkem Klimawandel leiden traditionelle Anbaugebiete besonders
+- relativ feinkörnige Daten für Recherche & visuelle Aufbereitung
+
+
+## Offene Fragen
+
+- Fallstricke
+  - Nur Klimamodell, Bodenqualität nicht einbezogen
+  - wenige Sorten als Proxies für ganzes Spektrum
+  - simulierte Daten, auch für die Vergangenheit
+
+
+## Offene Fragen
+
+- Technisch:
+  - Welches Koordinatensystem?
+  - Weitere Klimaszenarien modelliert?
+  - Unschärfe in Prognose ➡️ 5-Jahres-Durchschnitte nehmen?
+  - Zweitmeinung von anderen Expert:innen?
+  - Datenstruktur für Frontend?
+
+
+## Offene Fragen
+
+- Gestaltung:
+  - Wie komplex soll es sein?
+  - Nach Landkreisen aggregieren?
+  - Geocoden / Interaktives?
+  
+## Offene Fragen
+
+- [Economist hat's schon gemacht](https://archive.is/Zxlnk) 
+
+
+## Offene Fragen
+
+- Relevanz:
+  - Regionalen Schwerpunkt!
+  - Wie gehts dem Riesling?
+  - Was sagen die Winzer:innen heute? 
+  - Macht sich der Klimawandel schon bemerkbar?
+  - Stehen neue Betriebe in den Startlöchern?
+  - Gibt es Förderungen? Was planen die Kommunen?
+  
+  
+## Offene Fragen
+
+Wer übernimmt?
+  
+

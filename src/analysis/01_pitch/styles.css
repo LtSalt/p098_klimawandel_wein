@@ -1,0 +1,4 @@
+#und-morgen > img {
+  display: grid;
+  place-content: center;
+}

@@ -1,0 +1,378 @@
+---
+title: "How To"
+format: html
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+## Dependencies
+
+To work with NETCDF data in R, you'll need the `stars` and `sf` packages. We'll also use `dplyr` (from the `tidyverse`) for data wrangling and `ggplot2` for visuals. Additionally, the `lubridate` package makes working with dates easier, while `here` takes care of relative file paths. At last, we'll need `purrr`, `tidyr` and `forcats` (all of them from the `tidyverse`) to create some intermediate plots in the end. 
+
+Dependencies are defined using two commands: `install.packages` and `library`
+
+```{r}
+#| include: false
+if (!"stars" %in% installed.packages()) install.packages("stars")
+library(stars)
+```
+
+We'll make this easier by using `pacman`, which will do all of that as once for as many packages as we like.
+
+```{r}
+#| include: false
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
+pacman::p_load(stars, 
+               sf, 
+               dplyr, 
+               ggplot2, 
+               lubridate, 
+               here,
+               purrr,
+               tidyr,
+               forcats)
+```
+
+
+## Reading NETCDF files
+
+The `stars` and `sf` packages provide a simple interface to work with high-dimensional geographical data.
+
+First, we'll read data from both scenarios.
+
+```{r}
+#| include: false
+
+rcp45 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp45.nc"))
+rcp85 <- read_ncdf(here("src/data/raw/suitability/suitability_rcp85.nc"))
+```
+
+Then, we'll combine them into one single object
+
+```{r}
+sims <- c("rcp45" = rcp45, "rcp85" = rcp85, along = "scenario")
+```
+
+...with an additional dimension `scenario` to be able to filter later on.
+
+A `stars` object is a high-dimensional raster object - a "data cube", to quote the package author. When printing it to the console, we can see that our data consists of 5 variables: SUIT_E to SUIT_L, each one a suitability index for early (SUIT_E) up until late (SUIT_L) varieties, ranging from 0 to 1. We also see that the object contains 4 dimensions: `LON` and `LAT` for grid cell centroids, a timestamp for each year from 1980 to 2099, and our `scenario` variable. 
+
+```{r}
+sims 
+```
+
+
+## Working with data cubes
+
+When dealing with a data cube, you can either manipulate it directly or first extract a slice, convert it to a lower-dimensional data frame (a simple-features tibble, to be precise) and then decide where to go next. Usually, you'll want to go for the second, much simpler option.
+
+```{r}
+sims %>% 
+  filter(year(TIME) == 2024,
+         scenario == "rcp45") %>% 
+  st_as_sf()
+```
+
+You could also extract data for multiple years or scenarios:
+
+```{r}
+sims %>% 
+  filter(year(TIME) %in% c(2024, 2099)) %>% 
+  st_as_sf()
+```
+
+But since the algorithm needs to merge your slice into a two-dimensional data frame, you'll end up with lots of numbered columns. To avoid this, set `long = TRUE`. The result is a data frame in long format with additional columns to identify each individual data point.
+
+```{r}
+sims %>% 
+  filter(year(TIME) %in% c(2024, 2099)) %>% 
+  st_as_sf(long = TRUE)
+```
+
+Our dataset contains predictions for grid cells all over europe. Let's extract only values for grid cells within Germany. We'll do this in three steps. First, we crop our `stars` object to the bounding box of Germany. Then we grab all data points for the year 2024 within a RCP4.5-scenario and reduce the dimensions, just as before. Lastly, we "cut out" the correct shape.
+
+Let's load a polygon of Germany
+
+```{r}
+#| include: false
+
+germany <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_STA.shp")) %>% 
+  filter(GF == 9) %>% 
+  st_transform(4326) %>% 
+  select(geometry)
+```
+
+...and use it:
+
+```{r}
+#| include: false
+
+my_slice <- sims %>% 
+  st_crop(germany) %>% # crops to bounding box
+  filter(year(TIME) == 2050,
+         scenario == "rcp45") %>% 
+  st_as_sf() %>% 
+  # creates intersection of both geometries, effectively dropping grid cells 
+  # outside of Germany and reshaping those at the border
+  st_intersection(germany) 
+```
+
+
+## Plotting geodata
+
+Let's take a look at the result. We'll pass it to `ggplot` and use `geom_sf` to plot all grid cells.
+
+```{r}
+my_slice %>% 
+  ggplot() +
+  geom_sf()
+```
+
+Easy! Just remember that `ggplot` uses `+` instead of `%>%` for historical reasons. 
+
+Now let's add some color. Where is the climate suitable for early wine variations?
+
+```{r}
+my_slice %>% 
+  ggplot() +
+  geom_sf(aes(fill = SUIT_E))
+```
+
+Let's get rid of the gridlines. Normally, you would do this by setting `color = NA` or `lwd = 0` within `geom_sf` - but this does not work, it's a known bug. Instead, set color to use the same variable as fill:
+
+```{r}
+my_slice %>% 
+  ggplot() +
+  geom_sf(aes(fill = SUIT_E, color = SUIT_E))
+```
+
+Let's add some basic styles:
+
+```{r}
+my_slice %>% 
+  ggplot() +
+  geom_sf(aes(fill = SUIT_E, color = SUIT_E)) +
+  scale_fill_continuous(limits = c(0, 1)) +
+  scale_color_continuous(limits = c(0, 1)) +
+  labs(title = "Suitability for early wines in 2050",
+       subtitle = "at + 2.6°C until the end of the century",
+       fill = NULL,
+       color = NULL) +
+  theme_void()
+```
+
+
+## Choosing the right metric
+
+Since everything from 0.65 upwards is considered suitable, you might instead go for binary color coding.
+
+```{r}
+my_slice %>% 
+  mutate(suit = ifelse(SUIT_E < 0.65,
+                       FALSE,
+                       TRUE)) %>% 
+  ggplot() +
+  geom_sf(aes(fill = suit, color = suit)) +
+  scale_fill_discrete(labels = c("Not suitable", "Suitable")) +
+  scale_color_discrete(labels = c("Not suitable", "Suitable")) +
+  labs(title = "Where early wines could grow in 2050",
+       subtitle = "at + 2.6°C until the end of the century",
+       fill = NULL,
+       color = NULL) +
+  theme_void()
+```
+
+Or you might choose a diverging gradient with 0.65 as a middle point (alas, you should definitely go for nicer colors!):
+
+```{r}
+my_slice %>% 
+  ggplot() +
+  geom_sf(aes(fill = SUIT_E, color = SUIT_E)) +
+    scale_color_gradient2(
+    low = "blue",       
+    mid = "white",      
+    high = "red",       
+    midpoint = 0.65,
+    limits = c(0, 1)
+  ) +
+  scale_fill_gradient2(
+    low = "blue",       
+    mid = "white",      
+    high = "red",       
+    midpoint = 0.65,
+    limits = c(0, 1)
+  ) +
+  labs(title = "Suitability for early wines in 2050",
+       subtitle = "at + 2.6°C until the end of the century",
+       fill = NULL,
+       color = NULL) +
+  theme_void()
+```
+
+Maybe you want to know how many variations you can cultivate in different regions? Let's create a score and add state geometries for a better orientation
+
+First, we read in the state geometries.
+
+```{r}
+states <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_LAN.shp")) %>%
+  filter(GF == 9) %>% 
+  st_transform(4326)
+```
+
+Then we create the score and add the state geometries as an additional layer.
+
+```{r}
+my_slice %>% 
+  mutate(across(SUIT_E:SUIT_L, \(variable) variable >= 0.65),
+         # `as.factor` so ggplot treats it as a categorical variable
+         score = as.factor(SUIT_E + SUIT_EM + SUIT_M + SUIT_ML + SUIT_L)) %>%  
+  ggplot() +
+  geom_sf(aes(fill = score, color = score)) +
+  geom_sf(data = states, fill = NA) +
+  scale_fill_brewer(palette = "Greens") +
+  scale_color_brewer(palette = "Greens") +
+  labs(title = "Wine Variability in 2050",
+       subtitle = "at + 2.6°C until the end of the century",
+       fill = NULL,
+       color = NULL) +
+  theme_void()
+```
+
+Taking a step back, let's try to map our estimates to organizational units. First, we aggregate mean predictions at the level of municipalities ("Landkreise").
+
+```{r}
+#| include: false
+
+krs <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_KRS.shp")) %>% 
+  st_transform(4326)
+
+rcp45_agg <- sims %>%
+  filter(scenario == "rcp45") %>% 
+  aggregate(krs, mean, na.rm = TRUE)
+
+rcp85_agg <- sims %>%
+  filter(scenario == "rcp85") %>% 
+  aggregate(krs, mean, na.rm = TRUE)
+
+# combine aggregated values in one NETCDF object
+scenarios_agg <- c("rcp45" = rcp45_agg, "rcp85" = rcp85_agg, along = "scenario")
+```
+
+Then, we grab a time-slice of our data cube, recreate the variablity score and plot it as before. Important sidenote: 18 municipalities could not be aggregated, presumably because they're too small.
+
+```{r}
+scenarios_agg %>% 
+  filter(scenario == "rcp45", 
+         year(TIME) == 2050) %>% 
+  st_as_sf() %>%  
+  mutate(across(SUIT_E:SUIT_L, \(variable) variable >= 0.65),
+         score = as.factor(SUIT_E + SUIT_EM + SUIT_M + SUIT_ML + SUIT_L)) %>%  
+  ggplot() +
+  geom_sf(aes(fill = score, color = score)) +
+  geom_sf(data = states, fill = NA) +
+  # add municipalites as a third layer
+  geom_sf(data = krs, fill = NA, lwd = 0.1) +
+  scale_fill_brewer(palette = "Greens", na.value = "red") +
+  scale_color_brewer(palette = "Greens", na.value = "red") +
+  labs(title = "Wine Variability in 2050",
+       subtitle = "at + 2.6°C until the end of the century",
+       fill = NULL,
+       color = NULL) +
+  theme_void()
+```
+
+ 
+## Comparing time series
+
+At last, let's compare suitability over time. We grab data for the years 2024 and 2050 within the RCP45 scenario and compare the evolution for all municipalities in Germany. This works almost identical to before - you only need to grab an additional 'time slice' and plot it using `facet_wrap`. For simplicity, we'll just show suitability indices for early wines.
+
+```{r}
+scenarios_agg %>% 
+  filter(scenario == "rcp45", 
+         year(TIME) %in% c(2024, 2050)) %>% 
+  st_as_sf(long = TRUE) %>% 
+  ggplot() +
+  geom_sf(aes(fill = SUIT_E)) +
+  facet_wrap(~ year(TIME))
+```
+
+Beware, advanced: If you want to compare variablity scores, you would need to use some magic from the `purrr` magic to split your data into two sets, recreate the score while mapping over the two sets, then combine them back together and plot: 
+
+```{r}
+scenarios_agg %>% 
+  filter(scenario == "rcp45", 
+         year(TIME) %in% c(2024, 2050)) %>% 
+  st_as_sf(long = TRUE) %>% # don't forget to specifically convert to long format
+  group_split(TIME) %>% 
+  map(\(df) mutate(df, 
+                   across(SUIT_E:SUIT_L, \(variable) variable >= 0.65),
+                   score = as.factor(SUIT_E + SUIT_EM + SUIT_M + SUIT_ML + SUIT_L))) %>% 
+  bind_rows() %>% 
+  ggplot() +
+  geom_sf(aes(fill = score, color = score)) +
+  geom_sf(data = states, fill = NA) +
+  geom_sf(data = krs, fill = NA, lwd = 0.1) +
+  scale_fill_brewer(palette = "Greens", na.value = "red") +
+  scale_color_brewer(palette = "Greens", na.value = "red") +
+  labs(title = "Wine Variability over time",
+       caption = "at + 2.6°C until the end of the century",
+       fill = NULL,
+       color = NULL) +
+  facet_wrap(~ year(TIME)) +
+  theme(axis.ticks = element_blank(),
+        axis.text = element_blank(),
+        panel.grid = element_blank(),
+        panel.background = element_blank())
+```
+
+You might also want to inspect evolution over time in one specific municipality - for example for Berlin. We can extract all values for this geometry using `st_extract`, then plot a line graph:
+
+```{r}
+berlin <- krs %>% 
+  filter(GEN == "Berlin")
+
+scenarios_agg %>% 
+  st_extract(berlin) %>% 
+  filter(scenario == "rcp45") %>% 
+  st_as_sf(long = TRUE) %>% 
+  mutate(year = year(TIME)) %>% 
+  ggplot() +
+  geom_line(aes(x = year, y = SUIT_E))
+```
+
+What about Berlin's evolution of suitabilities in for all varieties? Just pivot the different suitabilities longer:
+
+```{r}
+pivotted <- scenarios_agg %>% 
+  st_extract(berlin) %>% 
+  filter(scenario == "rcp45") %>% 
+  st_as_sf(long = TRUE) %>% 
+  mutate(year = year(TIME)) %>% 
+  pivot_longer(SUIT_E:SUIT_L, names_to = "variety", values_to = "suitability")
+
+pivotted
+```
+
+...then use color to code the different paths. To get them in order, transform the `variety` column first into a factor.
+
+```{r}
+pivotted %>% 
+  mutate(variety = fct_relevel(as.factor(variety),
+                               "SUIT_E", "SUIT_EM", "SUIT_M", "SUIT_ML", "SUIT_L")) %>% 
+  ggplot() +
+  geom_line(aes(x = year, y = suitability, color = variety)) +
+  # add a marker for the threshold at 0.65
+  geom_hline(yintercept = 0.65, linetype = "dashed") +
+  # some additional styles
+  coord_cartesian(expand = FALSE) +
+  scale_x_continuous(limits = c(1980, 2100)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(title = "Wine suitabilites in Berlin over time",
+       subtitle = "at + 2.6°C until the end of the century",
+       x = NULL,
+       y = NULL,
+       color = NULL) +
+  theme_light()
+```
+
