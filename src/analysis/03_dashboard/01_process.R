@@ -47,6 +47,9 @@ sims_krs <- c("rcp45" = rcp45_agg, "rcp85" = rcp85_agg, along = "scenario") %>%
 
 # Combine sf objects and write to disk ------------------------------------
 
+dir.create(here("src/data/processed/dashboard/predictions_germany"),
+           recursive = TRUE)
+
 bind_rows(sims_grid, sims_krs) %>% 
   mutate(year = year(TIME)) %>% 
   select(-TIME) %>% 

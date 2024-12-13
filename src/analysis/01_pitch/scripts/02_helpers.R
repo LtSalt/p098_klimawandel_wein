@@ -85,7 +85,7 @@ save_png <- function(YEAR, dest) {
     theme_binary() +
     labs(title = YEAR)
   
-  ggsave(paste0(dest, YEAR, ".png"), p)
+  ggsave(paste0(dest, "/", YEAR, ".png"), p)
 }
 
 save_pngs <- function(years, dest) {

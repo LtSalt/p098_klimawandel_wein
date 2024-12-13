@@ -164,7 +164,7 @@ imgs <- reduce(pngs,
        .init = image_read(pngs[[1]]))
 
 
-# renders plots on disk as GIF
+# renders plots as GIF
 # DO NOT run in interactive session
 
 image_animate(imgs, fps = 5, loop = 1)
