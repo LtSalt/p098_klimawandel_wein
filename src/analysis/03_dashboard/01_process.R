@@ -41,12 +41,13 @@ sims_grid <- c("rcp45" = rcp45, "rcp85" = rcp85, along = "scenario") %>%
 
 sims_krs <- c("rcp45" = rcp45_agg, "rcp85" = rcp85_agg, along = "scenario") %>% 
   st_as_sf(long = TRUE) %>% 
-  mutate(level = "Landkreise")
+  mutate(level = "Landkreise") %>% 
+  st_join(krs, join = st_equals)
 
 
 # Combine sf objects and write to disk ------------------------------------
 
-test2 <- bind_rows(sims_grid, sims_krs) %>% 
+bind_rows(sims_grid, sims_krs) %>% 
   mutate(year = year(TIME)) %>% 
   select(-TIME) %>% 
   write_sf(here("src/data/processed/dashboard/predictions_germany/predictions_germany.shp"))

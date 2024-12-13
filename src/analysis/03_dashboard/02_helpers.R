@@ -3,30 +3,40 @@
 ################################################################################
 
 
+# Dependencies ------------------------------------------------------------
+
+if (!"pacman" %in% installed.packages()) install.packages("pacman")
+pacman::p_load(tidyverse, sf, RColorBrewer)
+
 
 # Import ------------------------------------------------------------------
 
-sims <- read_sf(here("src/data/processed/dashboard/predictions_germany/predictions_germany.shp"))
+states <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_LAN.shp")) %>%
+  filter(GF == 9) %>% 
+  st_transform(4326)
 
+krs <- read_sf(here("src/data/raw/vg2500_12-31.gk3.shape/vg2500/VG2500_KRS.shp")) %>% 
+  st_transform(4326) %>% 
+  select(name = GEN,
+         geometry)
 
-# Slice data for shiny maps -----------------------------------------------
+# Variables ---------------------------------------------------------------
 
-get_map_data <- function(sims, Scenario, Year, Level) {
-  dict_types <- c(
+dict_types <- c(
     "SUIT_E$" = "Sehr früh",
     "SUIT_EM" = "Früh",
     "SUIT_M$" = "Mittel",
     "SUIT_ML" = "Spät",
     "SUIT_L$" = "Sehr spät"
-  )
+)
   
-  threshold <- 0.65
-  
-  sims %>% 
-    filter(scenario == Scenario,
-           year == Year,
-           level == Level) %>% 
-    mutate(idx = row_number()) %>% 
+threshold <- 0.65
+
+
+# Reusable wrangling helper -----------------------------------------------
+
+wrangle <- function(sf) {
+  sf %>% 
     pivot_longer(SUIT_E:SUIT_L, names_to = "type", values_to = "suitability") %>%
     mutate(type = str_replace_all(type, dict_types),
            type = fct_relevel(as.factor(type), dict_types),
@@ -34,10 +44,31 @@ get_map_data <- function(sims, Scenario, Year, Level) {
 }
 
 
-# Plot variability --------------------------------------------------------
+# Slice data for shiny maps -----------------------------------------------
 
-plot_variability <- function(sims) {
+get_map_data <- function(sims, Scenario, Year, Level) {
   sims %>% 
+    filter(scenario == Scenario,
+           year == Year,
+           level == Level) %>% 
+    mutate(idx = row_number()) %>% 
+    wrangle()
+}
+
+get_regional_data <- function(sims, Scenario, search) {
+  sims %>% 
+    filter(scenario == Scenario, 
+           level == "Landkreise",
+           name == search) %>% 
+   wrangle()
+}
+
+
+
+# Plot --------------------------------------------------------------------
+
+plot_variability <- function(sims, level) {
+  p <- sims %>% 
     mutate(score = as.factor(sum(suitable)), .by = c(idx)) %>% 
     distinct(idx, .keep_all = TRUE) %>% 
     ggplot() +
@@ -60,35 +91,44 @@ plot_variability <- function(sims) {
           legend.text.position = "bottom",
           legend.title.position = "top",
           legend.title = element_blank(),
-          legend.key.spacing.x = unit(0, "cm")) +
-    geom_sf(data = krs, fill = NA, lwd = 0.1)
+          legend.key.spacing.x = unit(0, "cm"))
+  
+  if (level == "Grid") {
+    p
+  } else {
+    p +
+      geom_sf(data = krs, fill = NA, lwd = 0.1)
+  }
 }
 
-
-# Plot Types --------------------------------------------------------------
-
-plot_types <- function(sf) {
-  sf %>% 
+plot_types <- function(sf, level) {
+  p <- sf %>% 
     ggplot() +
     geom_sf(aes(fill = suitable, color = suitable)) +
     geom_sf(data = states, fill = NA, color = "black", lwd = 0.1) +
     facet_grid(cols = vars(type)) +
     labs(fill = NULL, color = NULL) +
-    scale_fill_manual(values = c("#4C4F8B", "#53914D"), labels = c("geeignet", "ungeeignet")) +
-    scale_color_manual(values = c("#4C4F8B", "#53914D"), labels = c("geeignet", "ungeeignet")) +
+    scale_fill_manual(values = c("#4C4F8B", "#53914D"), labels = c("ungeeignet", "geeignet")) +
+    scale_color_manual(values = c("#4C4F8B", "#53914D"), labels = c("ungeeignet", "geeignet")) +
     labs(title = "Eignung nach Weintypen") +
     theme_light() +
     theme(panel.grid = element_blank(),
           axis.text = element_blank(),
           axis.ticks = element_blank(),
-          legend.position = "bottom") +
-    geom_sf(data = krs, fill = NA, color = "white", lwd = 0.01)
+          legend.position = "bottom")
+
+  if (level == "Grid") {
+    p
+  } else {
+    p +
+      geom_sf(data = krs, fill = NA, color = "white", lwd = 0.01)
+  }
 }
 
-plot_evolution <- function(sf) {
+plot_evolution <- function(sf, level) {
   custom_palette <- c("Geht verloren" = "#F8766D", "Hält sich" = "#00BA38", "Kommt dazu" = "#619CFF")
   
-  sf %>% 
+  p <- sf %>% 
     select(-suitability) %>% 
     mutate(year = ifelse(year == 2024, "now", "then")) %>% 
     pivot_wider(names_from = year, values_from = suitable) %>% 
@@ -108,9 +148,27 @@ plot_evolution <- function(sf) {
           axis.ticks = element_blank(),
           legend.position = "bottom",
           legend.title = element_blank()) +
-    labs(title = "Entwicklung nach Weintypen") +
-    geom_sf(data = krs, fill = NA, color = "white", lwd = 0.01)
+    labs(title = "Entwicklung nach Weintypen")
+  
+  if (level == "Grid") {
+    p
+  } else {
+    p +
+      geom_sf(data = krs, fill = NA, color = "white", lwd = 0.01)
+  }
 }
 
-
+plot_linegraph <- function(sf, Year) {
+  sf %>% 
+    ggplot() +
+    geom_line(aes(x = year, y = suitability, color = type)) +
+    geom_vline(xintercept = Year, linetype = "dashed") +
+    geom_hline(yintercept = threshold, linetype = "dashed") +
+    theme_light() +
+    scale_color_manual(values = brewer.pal(5, "Greens")) +
+    coord_cartesian(expand = FALSE, xlim = c(1980, 2100), ylim = c(0, 1)) +
+    labs(x = NULL,
+         y = "Suitability",
+         color = "Weintyp")
+}
 
