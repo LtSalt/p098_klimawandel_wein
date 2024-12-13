@@ -16,3 +16,4 @@ src/data/processed/*
 !src/data/processed/.gitkeep
 src/dump
 src/analysis/01_pitch/imgs/gif/*
+*.pptx
