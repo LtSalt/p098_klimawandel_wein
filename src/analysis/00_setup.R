@@ -6,10 +6,14 @@
 # Dependencies ------------------------------------------------------------
 
 if (!"pacman" %in% installed.packages()) install.packages("pacman")
-pacman::p_load(here)
+pacman::p_load(here, tidyverse)
 
-main_scripts <- here() %>% 
+
+# Recreate processed data & reports ---------------------------------------
+
+setup_scripts <- here() %>% 
   list.files(full.names = TRUE, recursive = TRUE) %>% 
-  str_subset("00_main.R")
+  str_subset("00_setup.R") %>% 
+  str_subset(here("src/analysis/00_setup.R"), negate = TRUE) 
 
-walk(main_scripts, source)
+walk(setup_scripts, source)
