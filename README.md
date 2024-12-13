@@ -2,7 +2,15 @@
 
 ## Before you start
 
-All data was added to the `.gitignore` and uploaded to OneDrive. Copy all folders from the [OneDrive data directory](https://suedwestrundfunk.sharepoint.com/:f:/r/sites/SWRDATA/Freigegebene%20Dokumente/p098_klimawandel_wein/data?csf=1&web=1&e=TBMJ5B) to `src/data/raw`.
+- All data was added to the `.gitignore` and uploaded to OneDrive. Copy all folders from the [OneDrive data directory](https://suedwestrundfunk.sharepoint.com/:f:/r/sites/SWRDATA/Freigegebene%20Dokumente/p098_klimawandel_wein/data?csf=1&web=1&e=TBMJ5B) to `src/data/raw`.
+- Run `src/analysis/00_setup.R` to preprocess data and recreate all reports.
+
+
+## Getting familiar with the data
+
+- Have a look at the presentation under `src/analysis/01_pitch`.
+- Under `src/analysis/02_tutorial`, you'll find a small tutorial on how to work with and analyse the data.
+- Under `src/analysis/03_dashboard/03_dashboard.R`, you'll find a simple shiny dashboard. Just click the `Run App` button in the top right corner of your IDE.
 
 
 ## File structure & reproducibility
@@ -10,12 +18,8 @@ All data was added to the `.gitignore` and uploaded to OneDrive. Copy all folder
 This repo was designed to host data, data analysis reports and frontend code. 
 - Dotfiles (like `.git`, `.RProj`) and setup files (`package.json`) should live in the root folder. 
 - Everything else is in `src`.
-- Under `src/analysis`, you'll find everything to process data and recreate reports and dashboards. Run `src/analysis/00_main.R` to recreate all my reports and boot up to the shiny dashboard.
-
-
-## Tutorial & Dashboard
-
-- You'll find a small tutorial on how to work with the raw data as well as a simple dashboard in their respective folders.
+- If you need to create a processed dataset before starting your own analysis, put it into `src/data/processed` (preferably in it's own subdirectory). It's good practice to do this in a dedicated script `00_setup.R`. This way, it will be called whenever somebody runs the main startup script under `src/analysis/00_setup.R`.
+- Don't name a script `00_setup.R` unless you want it to be run by the main setup script.
 
 
 ## Working with NETCDF files

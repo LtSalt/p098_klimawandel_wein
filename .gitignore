@@ -9,7 +9,7 @@
 .quarto
 
 # specific to this repo
-
+.DS_Store
 src/data/raw/*
 !src/data/raw/.gitkeep
 src/data/processed/*
